@@ -1,0 +1,361 @@
+* {
+  box-sizing:border-box;
+}
+
+html, body {
+  margin:0;
+  height:100%;
+  width:100%;
+  max-width:100%;
+  overflow:hidden;
+}
+
+body {
+  padding:6px;
+  box-sizing:border-box;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:#f0f2f5;
+  font-size:14px;
+}
+
+input, select, textarea, button {
+  max-width:100%;
+}
+
+.form-control,
+.form-select {
+  min-width:0;
+}
+
+.app {
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  min-width:0;
+  max-width:100%;
+  overflow:hidden;
+}
+
+/* 顶部 tabs */
+.navbar-tabs {
+  background:#fff;
+  border-bottom:1px solid #e0e0e0;
+  display:flex;
+  align-items:center;
+  flex-shrink:0;
+  padding-left:12px;
+}
+
+.navbar-tabs .brand {
+  font-weight:bold;
+  padding:10px 14px 10px 4px;
+  color:#e57373;
+  white-space:nowrap;
+}
+
+.navbar-tabs .nav-tab {
+  padding:12px 18px;
+  cursor:pointer;
+  border-bottom:2px solid transparent;
+  color:#666;
+  font-size:14px;
+  user-select:none;
+  white-space:nowrap;
+}
+
+.navbar-tabs .nav-tab:hover {
+  color:#333;
+}
+
+.navbar-tabs .nav-tab.active {
+  color:#e57373;
+  border-bottom-color:#e57373;
+}
+
+/* tab 容器 */
+.tab-pane {
+  display:none;
+  flex:1;
+  min-height:0;
+  min-width:0;
+}
+
+.tab-pane.active {
+  display:flex;
+  flex-direction:column;
+}
+
+.main {
+  flex:1;
+  display:flex;
+  min-height:0;
+  min-width:0;
+}
+
+.sidebar {
+  width:380px;
+  max-width:100%;
+  min-width:0;
+  background:#fff;
+  border-right:1px solid #e0e0e0;
+  overflow-y:auto;
+  flex-shrink:0;
+}
+
+.sidebar.padded {
+  padding:16px;
+}
+
+.preview-pane {
+  flex:1;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  background:#f0f2f5;
+}
+
+.preview-toolbar {
+  padding:6px 12px;
+  background:#fff;
+  border-bottom:1px solid #e0e0e0;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  flex-shrink:0;
+  min-height:46px;
+}
+
+.preview-frame {
+  flex:1;
+  min-height:0;
+  border:none;
+  width:100%;
+  background:#f0f2f5;
+  display:block;
+}
+
+/* 库列表 */
+.lib-list {
+  display:flex;
+  flex-direction:column;
+}
+
+.lib-item {
+  padding:10px 14px;
+  border-bottom:1px solid #eee;
+  cursor:pointer;
+}
+
+.lib-item:hover {
+  background:#fafafa;
+}
+
+.lib-item.active {
+  background:#fff5f5;
+  border-left:3px solid #e57373;
+  padding-left:11px;
+}
+
+.lib-item .meta {
+  font-size:12px;
+  color:#888;
+  margin-top:4px;
+}
+
+.lib-item .op-snippet {
+  font-size:12px;
+  color:#444;
+  margin-top:6px;
+  max-height:48px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+
+/* 进度块 */
+.progress-box {
+  background:#fafafa;
+  border:1px solid #eee;
+  border-radius:4px;
+  padding:8px 10px;
+  font-size:13px;
+  margin-top:12px;
+}
+
+.progress-box .line {
+  font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:12px;
+  color:#555;
+  margin-top:4px;
+  word-break:break-all;
+}
+
+.progress-box .err {
+  color:#e57373;
+}
+
+/* toast */
+.toast-container {
+  position:fixed;
+  top:16px;
+  right:16px;
+  z-index:9999;
+  display:flex;
+  flex-direction:column;
+  max-width:calc(100vw - 32px);
+}
+
+.toast-container .toast {
+  max-width:100%;
+  word-break:break-word;
+}
+
+.section-title {
+  font-size:12px;
+  color:#999;
+  margin:14px 0 6px;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  font-weight:600;
+}
+
+.section-title.first {
+  margin-top:0;
+}
+
+/* 旧 dropdown 扩展面板样式，保留不影响 */
+.ext-dropdown {
+  min-width:min(280px, calc(100vw - 24px));
+  max-width:calc(100vw - 24px);
+}
+
+.ext-dropdown input,
+.ext-dropdown select {
+  width:100%;
+}
+
+/* Offcanvas 扩展设置面板 */
+.ext-offcanvas {
+  --bs-offcanvas-width:min(420px, 100vw);
+  z-index:2000;
+}
+
+.offcanvas-backdrop {
+  z-index:1990;
+}
+
+.ext-offcanvas .offcanvas-header {
+  border-bottom:1px solid #eee;
+}
+
+.ext-offcanvas .offcanvas-body {
+  overflow-y:auto;
+  overscroll-behavior:contain;
+}
+
+.ext-offcanvas .form-check-label {
+  font-size:14px;
+}
+
+.ext-offcanvas input,
+.ext-offcanvas select {
+  max-width:100%;
+}
+
+/* 移动端适配 */
+@media (max-width:768px) {
+  html, body {
+    width:100%;
+    overflow:hidden;
+  }
+
+  body {
+    padding:6px;
+  }
+
+  .navbar-tabs {
+    max-width:100%;
+    overflow-x:auto;
+    padding-left:6px;
+  }
+
+  .navbar-tabs .brand,
+  .navbar-tabs .nav-tab {
+    flex:0 0 auto;
+  }
+
+  .navbar-tabs .brand {
+    padding-right:10px;
+  }
+
+  .navbar-tabs .nav-tab {
+    padding-left:14px;
+    padding-right:14px;
+  }
+
+  .main {
+    flex-direction:column;
+    overflow:auto;
+  }
+
+  .sidebar {
+    width:100%;
+    max-width:100%;
+    border-right:0;
+    border-bottom:1px solid #e0e0e0;
+  }
+
+  .sidebar.padded {
+    padding:14px;
+  }
+
+  .preview-pane {
+    min-height:360px;
+  }
+
+  .preview-toolbar {
+    max-width:100%;
+    overflow-x:auto;
+    flex-wrap:nowrap;
+  }
+
+  .preview-toolbar > * {
+    flex-shrink:0;
+  }
+
+  #downloadForm .row .col-6.d-flex {
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center !important;
+    padding-bottom:0 !important;
+  }
+
+  #downloadForm > .d-flex.gap-2 {
+    min-width:0;
+  }
+
+  #downloadForm > .d-flex.gap-2 > button {
+    min-width:0;
+  }
+
+  .toast-container {
+    left:12px;
+    right:12px;
+    top:12px;
+    width:auto;
+    max-width:none;
+    align-items:stretch;
+  }
+
+  .toast-container .toast {
+    width:100%;
+    min-width:0 !important;
+    max-width:none;
+  }
+
+  .ext-offcanvas {
+    --bs-offcanvas-width:min(88vw, 420px);
+  }
+}

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>X岛缓存工具</title>
+
+<link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/bootstrap-icons.css') }}" rel="stylesheet">
+<link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+</head>
+
+<body>
+<div class="app">
+
+  <div class="navbar-tabs">
+    <div class="brand">📌 X岛缓存工具</div>
+    <div class="nav-tab active" data-tab="download">下载</div>
+    <div class="nav-tab" data-tab="library">本地库</div>
+    <div class="nav-tab" data-tab="settings">设置</div>
+  </div>
+
+  <!-- ============== 下载 tab ============== -->
+  <div class="tab-pane active" id="tab-download">
+    <div class="main">
+      <div class="sidebar padded">
+        <form id="downloadForm">
+          <div class="section-title first">下载参数</div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">串号</label>
+            <input id="threadId" type="number" class="form-control" placeholder="例如 50000001" required>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">页数</label>
+            <input id="pages" type="text" class="form-control" placeholder="默认全部，可填 1-3,5">
+          </div>
+
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small mb-1">线程数</label>
+              <input id="threads" type="number" class="form-control" value="5" min="1" max="32">
+            </div>
+
+            <div class="col-6 d-flex align-items-end pb-1">
+              <div class="form-check form-switch me-3 mb-0">
+                <input class="form-check-input" type="checkbox" id="onlyPo">
+                <label class="form-check-label small" for="onlyPo">仅Po</label>
+              </div>
+
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="resume" checked>
+                <label class="form-check-label small" for="resume">续传</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mb-2">
+            <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+              <i class="bi bi-download"></i> 开始下载
+            </button>
+
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#downloadExtCanvas"
+                    aria-controls="downloadExtCanvas">
+              <i class="bi bi-sliders"></i>
+            </button>
+          </div>
+        </form>
+
+        <div class="progress-box d-none" id="progressBox">
+          <div id="stageLabel">就绪</div>
+          <div class="progress mt-2" style="height:6px;">
+            <div id="progressBar" class="progress-bar" style="width:0%"></div>
+          </div>
+          <div class="line" id="statusLine"></div>
+          <div class="line err" id="failedLine"></div>
+        </div>
+      </div>
+
+      <div class="preview-pane">
+        <div class="preview-toolbar">
+          <strong id="previewTitle">预览</strong>
+          <span class="text-muted small" id="previewMeta"></span>
+
+          <div class="ms-auto d-flex gap-1" id="exportButtons" style="display:none;">
+            <button class="btn btn-sm btn-outline-secondary" data-fmt="json">JSON</button>
+            <button class="btn btn-sm btn-outline-secondary" data-fmt="txt">TXT</button>
+            <button class="btn btn-sm btn-outline-secondary" data-fmt="html">HTML</button>
+            <button class="btn btn-sm btn-outline-secondary" data-fmt="jpg">JPG</button>
+            <button class="btn btn-sm btn-outline-secondary" data-fmt="doc">DOC</button>
+            <button class="btn btn-sm btn-outline-secondary" data-fmt="pdf">PDF</button>
+          </div>
+        </div>
+
+        <iframe class="preview-frame" id="downloadPreview" sandbox="allow-same-origin"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== 本地库 tab ============== -->
+  <div class="tab-pane" id="tab-library">
+    <div class="main">
+      <div class="sidebar">
+        <div id="libraryList" class="lib-list"></div>
+        <div id="libraryEmpty" class="text-muted small text-center p-4 d-none">本地无缓存数据</div>
+      </div>
+
+      <div class="preview-pane">
+        <div class="preview-toolbar">
+          <strong id="libTitle">请选择串</strong>
+          <span class="text-muted small" id="libMeta"></span>
+
+          <div class="ms-auto d-flex gap-1 align-items-center">
+            <div id="libExtBox" style="display:none;">
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="offcanvas"
+                      data-bs-target="#libraryExtCanvas"
+                      aria-controls="libraryExtCanvas">
+                <i class="bi bi-sliders"></i>
+              </button>
+            </div>
+
+            <div class="btn-group" id="libExportButtons" style="display:none;">
+              <button class="btn btn-sm btn-outline-secondary" data-fmt="json">JSON</button>
+              <button class="btn btn-sm btn-outline-secondary" data-fmt="txt">TXT</button>
+              <button class="btn btn-sm btn-outline-secondary" data-fmt="html">HTML</button>
+              <button class="btn btn-sm btn-outline-secondary" data-fmt="jpg">JPG</button>
+              <button class="btn btn-sm btn-outline-secondary" data-fmt="doc">DOC</button>
+              <button class="btn btn-sm btn-outline-secondary" data-fmt="pdf">PDF</button>
+            </div>
+
+            <button class="btn btn-sm btn-outline-danger" id="libDelete" style="display:none;">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+
+        <iframe class="preview-frame" id="libPreview" sandbox="allow-same-origin"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== 设置 tab ============== -->
+  <div class="tab-pane" id="tab-settings">
+    <div class="main">
+      <div class="sidebar padded" style="width:100%;">
+        <div class="section-title first">账号</div>
+
+        <label class="form-label small mb-1">用户 Cookie (userhash)</label>
+        <input id="cookieInput" type="text" class="form-control mb-2" autocomplete="off">
+
+        <div class="d-flex gap-2 flex-wrap mb-3">
+          <button id="saveConfig" class="btn btn-primary btn-sm" type="button">保存</button>
+        </div>
+
+        <div class="section-title">二维码导入</div>
+
+        <label class="form-label small mb-1">选择 Cookie 二维码图片</label>
+        <input id="qrcodeFile" type="file" class="form-control mb-2" accept="image/*">
+
+        <div class="d-flex gap-2 flex-wrap mb-2">
+          <button id="parseQrcode" class="btn btn-outline-primary btn-sm" type="button">
+            <i class="bi bi-qr-code-scan"></i> 从二维码读取
+          </button>
+        </div>
+
+        <div class="text-muted small mt-3">
+          userhash 用于访问 X岛 API。可以在 X岛网页登录后从浏览器 Cookie 中获取，
+          也可以上传 X岛导出的 Cookie 二维码图片自动读取。
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============== 下载拓展设置 Offcanvas ============== -->
+<div class="offcanvas offcanvas-end ext-offcanvas" tabindex="-1"
+     id="downloadExtCanvas" aria-labelledby="downloadExtCanvasLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="downloadExtCanvasLabel">下载 / 预览设置</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+            aria-label="关闭"></button>
+  </div>
+
+  <div class="offcanvas-body ext-panel">
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="save_images">
+      <label class="form-check-label">保存 / 显示图片</label>
+    </div>
+
+    <label class="form-label small mb-1">图片质量</label>
+    <select class="form-select form-select-sm ext-input mb-3" data-ext="image_quality">
+      <option value="thumb">缩略图</option>
+      <option value="image">原图</option>
+    </select>
+
+    <hr class="my-3">
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="show_header">
+      <label class="form-check-label">饼干 / 时间 / 串号</label>
+    </div>
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="show_meta">
+      <label class="form-check-label">标题 / 名称</label>
+    </div>
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="show_divider">
+      <label class="form-check-label">楼间分割线</label>
+    </div>
+
+    <hr class="my-3">
+
+    <label class="form-label small mb-1">JPG 宽度，像素</label>
+    <input type="number" class="form-control form-control-sm ext-input"
+           data-ext="jpg_width">
+  </div>
+</div>
+
+<!-- ============== 本地库拓展设置 Offcanvas ============== -->
+<div class="offcanvas offcanvas-end ext-offcanvas" tabindex="-1"
+     id="libraryExtCanvas" aria-labelledby="libraryExtCanvasLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="libraryExtCanvasLabel">本地库 / 导出设置</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"
+            aria-label="关闭"></button>
+  </div>
+
+  <div class="offcanvas-body ext-panel">
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="save_images">
+      <label class="form-check-label">显示图片</label>
+    </div>
+
+    <label class="form-label small mb-1">图片质量</label>
+    <select class="form-select form-select-sm ext-input mb-3" data-ext="image_quality">
+      <option value="thumb">缩略图</option>
+      <option value="image">原图</option>
+    </select>
+
+    <hr class="my-3">
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="show_header">
+      <label class="form-check-label">饼干 / 时间 / 串号</label>
+    </div>
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="show_meta">
+      <label class="form-check-label">标题 / 名称</label>
+    </div>
+
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input ext-toggle" type="checkbox" data-ext="show_divider">
+      <label class="form-check-label">楼间分割线</label>
+    </div>
+
+    <hr class="my-3">
+
+    <label class="form-label small mb-1">导出页范围</label>
+    <input type="text"
+           class="form-control form-control-sm ext-input mb-3"
+           data-ext="export_pages"
+           placeholder="留空=全部，可填 1-3,5">
+
+    <label class="form-label small mb-1">JPG 宽度</label>
+    <input type="number"
+           class="form-control form-control-sm ext-input"
+           data-ext="jpg_width">
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
