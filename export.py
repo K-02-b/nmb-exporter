@@ -2,6 +2,9 @@
 X岛内容导出工具
 ================
 支持格式: json / txt / jpg / doc / pdf / html
+
+嵌入到别的项目使用时（vendoring），不需要修改本文件：外部依赖（图片解析/下载、
+图片目录、字体目录）都通过顶部的 ExportEnv 注入，见「宿主接口」一节。
 """
 from __future__ import annotations
 
@@ -12,6 +15,9 @@ import json
 import os
 import re
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -44,6 +50,127 @@ def _is_quote_line(s: str) -> bool:
 
 # ============================== 图片辅助 ==============================
 IMAGE_DIR_DEFAULT = "data/images"
+
+
+# ============================== 宿主接口 ==============================
+# 本文件可以被整体复制（vendoring）到别的项目里使用。为此，所有「外部世界」的
+# 依赖都收敛到下面这一个接缝，宿主不必再改本文件的任何一行：
+#
+#     from export import ExportEnv, configure, use_env
+#
+#     configure(ExportEnv(font_dir="/app/assets/fonts"))        # 进程级默认
+#     with use_env(ExportEnv(image_dir="/tmp/abc")):            # 作用域内生效
+#         export_data(posts, "pdf", "out.pdf")
+#
+# 不注入任何东西时，行为与历史上完全一致（图片走同级 images.py、字体走 CWD 下的 fonts/）。
+# 用 ContextVar 而不是模块级全局：Web 服务里同进程会并发导出，各自的临时目录/字体
+# 目录不会互相串味。
+
+# 图片解析：(img, ext, quality, base_dir) -> 本地路径 或 None（视为没有这张图）
+ImageResolver = Callable[[str, str, str, str], Optional[str]]
+# 图片下载：同上签名，负责把图准备好（仅在 fetch=True 且本地点不存在时调用）
+ImageFetcher = Callable[[str, str, str, str], None]
+
+FONT_DIR_DEFAULT = "fonts"
+FONT_CJK = "GoNotoCJKCore.ttf"
+FONT_LATIN = "NotoSans-Regular.ttf"
+
+
+def _default_image_resolver(img: str, ext: str, quality: str,
+                             base_dir: str) -> Optional[str]:
+    """默认实现：交给同级的 images.py（图片位于 base_dir/quality/ 下）。
+
+    vendored 到没有 images.py 的项目时退化为 base_dir/文件名 —— 这正好对应
+    「宿主已把图片备好放进临时目录」的常见用法；需要别的布局请注入 resolver。
+    """
+    try:
+        from images import image_local_path
+    except ImportError:
+        return str(Path(base_dir) / f"{img}{ext}")
+    return str(image_local_path(img, ext, quality, base_dir))
+
+
+def _default_image_fetcher(img: str, ext: str, quality: str,
+                            base_dir: str) -> None:
+    try:
+        from images import download_image
+    except ImportError:
+        return  # 没有下载器可用，就当这张图取不到
+    download_image(img, ext, quality, base_dir)
+
+
+@dataclass(frozen=True)
+class ExportEnv:
+    """宿主可注入的依赖。字段全部可选，缺省即历史默认行为。
+
+    image_resolver: (img, ext, quality, base_dir) -> 本地路径 或 None
+    image_fetcher : 同签名，负责按需下载/生成图片
+    image_dir     : image_opts 未显式给 base_dir 时的图片根目录
+    font_dir      : JPG / PDF 渲染所用字体所在目录
+    cjk_font      : 中文字体文件名（PDF 必需，缺失会导致中文渲染为空白）
+    latin_font    : 拉丁字体文件名
+    """
+
+    image_resolver: Optional[ImageResolver] = None
+    image_fetcher: Optional[ImageFetcher] = None
+    image_dir: str = IMAGE_DIR_DEFAULT
+    font_dir: str = FONT_DIR_DEFAULT
+    cjk_font: str = FONT_CJK
+    latin_font: str = FONT_LATIN
+
+
+_DEFAULT_ENV = ExportEnv()
+_ENV: ContextVar[Optional[ExportEnv]] = ContextVar("nmb_export_env", default=None)
+
+
+def current_env() -> ExportEnv:
+    """当前生效的宿主接口；未设置时返回进程级默认（即历史行为）。"""
+    return _ENV.get() or _DEFAULT_ENV
+
+
+def configure(env: ExportEnv) -> None:
+    """设置进程级默认接口。"""
+    global _DEFAULT_ENV
+    _DEFAULT_ENV = env
+
+
+@contextmanager
+def use_env(env: ExportEnv):
+    """作用域内生效，退出自动还原；并发调用之间互不影响。"""
+    token = _ENV.set(env)
+    try:
+        yield env
+    finally:
+        _ENV.reset(token)
+
+
+def set_image_hooks(resolver=None, downloader=None) -> None:
+    """只覆盖图片解析，其余字段沿用进程级默认（保留给已有调用方）。"""
+    configure(replace(_DEFAULT_ENV, image_resolver=resolver,
+                      image_fetcher=downloader))
+
+
+def _font_candidates(cjk_only: bool = False) -> List[str]:
+    """字体路径候选；CJK 字体缺失时 PDF 里中文会变成空白，调用方应先自检。"""
+    env = current_env()
+    out = [os.path.join(env.font_dir, env.cjk_font)]
+    if not cjk_only:
+        out.append(os.path.join(env.font_dir, env.latin_font))
+    return out
+
+
+def _resolve_image_file(img: str, ext: str, quality: str,
+                         base_dir: str) -> Path:
+    """把图片定位交给宿主；resolver 返回 None 时给一个必然不存在的路径，
+    让上层的 exists() 判断自然走「没有图」分支。"""
+    resolver = current_env().image_resolver or _default_image_resolver
+    found = resolver(img, ext, quality, base_dir)
+    return Path(found) if found else Path(base_dir) / f"__missing__{img}{ext}"
+
+
+def _fetch_image(img: str, ext: str, quality: str, base_dir: str) -> None:
+    fetcher = current_env().image_fetcher or _default_image_fetcher
+    fetcher(img, ext, quality, base_dir)
 _MIME_MAP = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
     ".png": "image/png",  ".gif": "image/gif",
@@ -77,13 +204,11 @@ def _resolve_image_src_for_html(post: Dict[str, Any],
         return pattern.format(quality=quality, img=img, ext=ext)
 
     # embed: 自包含 data URI
-    base_dir = image_opts.get("base_dir") or IMAGE_DIR_DEFAULT
-    from images import image_local_path
-    p = image_local_path(img, ext, quality, base_dir)
+    base_dir = image_opts.get("base_dir") or current_env().image_dir
+    p = _resolve_image_file(img, ext, quality, base_dir)
     if (not p.exists() or p.stat().st_size == 0) and image_opts.get("fetch"):
         try:
-            from images import download_image
-            download_image(img, ext, quality, base_dir)
+            _fetch_image(img, ext, quality, base_dir)
         except Exception: pass
     if p.exists() and p.stat().st_size > 0:
         uri = _data_uri_for_file(p)
@@ -103,13 +228,11 @@ def _resolve_image_local_path(post: Dict[str, Any],
     if quality not in ("thumb", "image"): return None
     img = post.get("img"); ext = post.get("ext")
     if not img or not ext: return None
-    base_dir = image_opts.get("base_dir") or IMAGE_DIR_DEFAULT
-    from images import image_local_path
-    p = image_local_path(img, ext, quality, base_dir)
+    base_dir = image_opts.get("base_dir") or current_env().image_dir
+    p = _resolve_image_file(img, ext, quality, base_dir)
     if (not p.exists() or p.stat().st_size == 0) and image_opts.get("fetch"):
         try:
-            from images import download_image
-            download_image(img, ext, quality, base_dir)
+            _fetch_image(img, ext, quality, base_dir)
         except Exception: pass
     return str(p) if p.exists() and p.stat().st_size > 0 else None
 
@@ -225,7 +348,7 @@ def export_jpg(data, output_path, *, show_header=True, show_meta=True,
         print("错误：导出 JPG 需要安装 Pillow，请执行: pip install Pillow")
         return
 
-    font_candidates = ["fonts/GoNotoCJKCore.ttf", "fonts/NotoSans-Regular.ttf"]
+    font_candidates = _font_candidates()
     font_path = next((fp for fp in font_candidates if os.path.exists(fp)), None)
 
     try:
@@ -508,16 +631,31 @@ def export_doc(data, output_path, *, show_header=True, show_meta=True,
         pPr.append(pBdr)
 
     def add_run(p, text, *, color=None, bold=False, size=None):
+        """直接写 rPr XML，绕开 python-docx 逐属性的描述符/校验开销。
+
+        文本仍交给 p.add_run()（\t / \n 会拆成 <w:tab/> / <w:br/>，首尾空白带
+        xml:space="preserve"），只手写 rPr；顺序遵循 CT_RPr 的 schema 序列
+        b -> color -> sz。经 1008 组参数穷举与整篇文档比对，输出与高层 API 逐字节一致。
+        """
         run = p.add_run(text)
 
-        if color is not None:
-            run.font.color.rgb = rgb(color)
+        if color is None and not bold and size is None:
+            return run
+
+        rPr = run._r.get_or_add_rPr()
 
         if bold:
-            run.bold = True
+            rPr.append(OxmlElement("w:b"))
+
+        if color is not None:
+            el = OxmlElement("w:color")
+            el.set(qn("w:val"), _hex(color)[1:])  # w:color 的 val 不带 '#'
+            rPr.append(el)
 
         if size is not None:
-            run.font.size = Pt(size)
+            el = OxmlElement("w:sz")
+            el.set(qn("w:val"), str(int(round(size * 2))))  # 半磅
+            rPr.append(el)
 
         return run
 
@@ -636,7 +774,7 @@ def export_pdf(data, output_path, *, show_header=True, show_meta=True,
 
     font_name = "Helvetica"
 
-    for fp in ["fonts/GoNotoCJKCore.ttf"]:
+    for fp in _font_candidates(cjk_only=True):
         if os.path.exists(fp):
             try:
                 try:

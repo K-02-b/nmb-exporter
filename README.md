@@ -167,6 +167,47 @@ python export.py data/50000001.json -f pdf --no-divider
 python parse_qrcode.py <二维码图片路径> [--config config.json]
 ```
 
+## 作为库调用（嵌入到其他项目）
+
+`export.py` 可以整体复制（vendoring）到别的项目里直接用，**不需要修改它的任何一行**：所有「外部世界」的依赖都收敛在文件顶部的 `ExportEnv` 接缝上。
+
+```python
+from export import ExportEnv, configure, use_env, export_data
+
+# 1) 进程级默认：告诉它字体和图片在哪
+configure(ExportEnv(
+    font_dir="/app/assets/fonts",       # JPG / PDF 渲染用的字体目录
+    image_dir="/app/data/images",       # image_opts 没给 base_dir 时的图片根目录
+))
+
+# 2) 作用域内覆盖：并发导出时各自的临时目录互不串味
+with use_env(ExportEnv(image_dir="/tmp/export-42")):
+    export_data(posts, "pdf", "out.pdf")
+```
+
+### `ExportEnv` 字段
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `image_resolver` | 走同级 `images.py` | `(img, ext, quality, base_dir) -> 本地路径 \| None`；返回 `None` 视为「这张图没有」 |
+| `image_fetcher` | 走同级 `images.py` | 同签名，按需下载/生成图片 |
+| `image_dir` | `data/images` | 未显式传 `base_dir` 时的图片根目录 |
+| `font_dir` | `fonts` | JPG / PDF 所用字体所在目录 |
+| `cjk_font` | `GoNotoCJKCore.ttf` | 中文字体文件名（PDF 必需，缺失会导致中文空白） |
+| `latin_font` | `NotoSans-Regular.ttf` | 拉丁字体文件名 |
+
+### 三个入口
+
+| 入口 | 生效范围 | 典型场景 |
+| --- | --- | --- |
+| `configure(env)` | 进程级默认 | CLI、单进程脚本 |
+| `use_env(env)` | 作用域内，退出自动还原 | Web 服务：每次导出带自己的目录，**并发安全** |
+| `set_image_hooks(resolver, downloader)` | 只覆盖图片解析 | 兼容早期写法，签名不变 |
+
+不注入任何东西时行为与历史完全一致。实现上用 `ContextVar` 而非模块级全局——同进程并发导出时不会互相覆盖。
+
+> **没有 `images.py` 也能用**：默认 resolver 在导入不到 `images` 时会退化为 `base_dir/文件名`，正好对应「宿主已把图片备好放进临时目录」的常见用法。需要其它布局请注入自己的 `image_resolver`。
+
 ## 数据目录结构
 
 ```
