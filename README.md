@@ -206,7 +206,7 @@ with use_env(ExportEnv(image_dir="/tmp/export-42")):
 
 不注入任何东西时行为与历史完全一致。实现上用 `ContextVar` 而非模块级全局——同进程并发导出时不会互相覆盖。
 
-> **没有 `images.py` 也能用**：默认 resolver 在导入不到 `images` 时会退化为 `base_dir/文件名`，正好对应「宿主已把图片备好放进临时目录」的常见用法。需要其它布局请注入自己的 `image_resolver`。
+> **没有 `images.py` 也能用**：默认 resolver 只在 `images` 模块**本身缺失**时才退化为 `base_dir/文件名`，正好对应「宿主已把图片备好放进临时目录」的常见用法。若 `images.py` 存在但它自己的依赖有问题（例如没装 `requests`），仍会照常抛出错误，不会被静默吞掉。需要其它布局请注入自己的 `image_resolver`。
 
 ## 数据目录结构
 

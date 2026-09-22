@@ -85,7 +85,9 @@ def _default_image_resolver(img: str, ext: str, quality: str,
     """
     try:
         from images import image_local_path
-    except ImportError:
+    except ModuleNotFoundError as e:
+        if e.name != "images":
+            raise  # images.py 在，但它自己的依赖缺失（如没装 requests）→ 必须暴露出来
         return str(Path(base_dir) / f"{img}{ext}")
     return str(image_local_path(img, ext, quality, base_dir))
 
@@ -94,7 +96,9 @@ def _default_image_fetcher(img: str, ext: str, quality: str,
                             base_dir: str) -> None:
     try:
         from images import download_image
-    except ImportError:
+    except ModuleNotFoundError as e:
+        if e.name != "images":
+            raise
         return  # 没有下载器可用，就当这张图取不到
     download_image(img, ext, quality, base_dir)
 
