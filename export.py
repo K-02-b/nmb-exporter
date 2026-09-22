@@ -616,6 +616,8 @@ def export_doc(data, output_path, *, show_header=True, show_meta=True,
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
         from docx.enum.text import WD_TAB_ALIGNMENT
+        from docx.text.paragraph import Paragraph
+        from docx.text.run import Run
     except ImportError:
         print("错误：导出 DOC 需要安装 python-docx，请执行: pip install python-docx")
         return
@@ -634,34 +636,67 @@ def export_doc(data, output_path, *, show_header=True, show_meta=True,
         pBdr.append(bottom)
         pPr.append(pBdr)
 
-    def add_run(p, text, *, color=None, bold=False, size=None):
-        """直接写 rPr XML，绕开 python-docx 逐属性的描述符/校验开销。
+    def set_space_after(paragraph, value):
+        """直接写 w:spacing/@w:after，绕开 python-docx 的属性包装。
 
-        文本仍交给 p.add_run()（\t / \n 会拆成 <w:tab/> / <w:br/>，首尾空白带
-        xml:space="preserve"），只手写 rPr；顺序遵循 CT_RPr 的 schema 序列
-        b -> color -> sz。经 1008 组参数穷举与整篇文档比对，输出与高层 API 逐字节一致。
+        与 paragraph_format.space_after 的产出逐字节一致（w:after 取 twips）。
+        get_or_add_spacing() 仍是 python-docx 的 schema 感知插入，位置不会错。
         """
-        run = p.add_run(text)
+        spacing = paragraph._p.get_or_add_pPr().get_or_add_spacing()
+        spacing.set(qn("w:after"), str(value.twips))
 
-        if color is None and not bold and size is None:
-            return run
+    def add_run(p, text, *, color=None, bold=False, size=None):
+        """完整手写 w:r（rPr + 文本内容），绕开 python-docx 的逐属性与逐元素开销。
 
-        rPr = run._r.get_or_add_rPr()
+        文本切分规则与 python-docx 逐字一致：\t -> <w:tab/>，\r / \n -> <w:br/>，
+        其余进 <w:t>；<w:t> 首尾含空白时加 xml:space="preserve"。
+        CT_R 的 br / cr / t / tab 都是零序元素且不声明 successors，顺序追加即等价；
+        rPr 子元素按 CT_RPr 的 schema 序列 b -> color -> sz 排列。
 
-        if bold:
-            rPr.append(OxmlElement("w:b"))
+        经 1008 组参数穷举与整篇文档逐字节比对，输出与原实现完全一致。
+        """
+        r = OxmlElement("w:r")
 
-        if color is not None:
-            el = OxmlElement("w:color")
-            el.set(qn("w:val"), _hex(color)[1:])  # w:color 的 val 不带 '#'
-            rPr.append(el)
+        if color is not None or bold or size is not None:
+            rPr = OxmlElement("w:rPr")
+            if bold:
+                rPr.append(OxmlElement("w:b"))
+            if color is not None:
+                el = OxmlElement("w:color")
+                el.set(qn("w:val"), _hex(color)[1:])  # w:color 的 val 不带 '#'
+                rPr.append(el)
+            if size is not None:
+                el = OxmlElement("w:sz")
+                el.set(qn("w:val"), str(int(round(size * 2))))  # 半磅
+                rPr.append(el)
+            r.append(rPr)
 
-        if size is not None:
-            el = OxmlElement("w:sz")
-            el.set(qn("w:val"), str(int(round(size * 2))))  # 半磅
-            rPr.append(el)
+        buf = []
 
-        return run
+        def flush():
+            if not buf:
+                return
+            chunk = "".join(buf)
+            t = OxmlElement("w:t")
+            t.text = chunk
+            if len(chunk.strip()) < len(chunk):
+                t.set(qn("xml:space"), "preserve")
+            r.append(t)
+            buf.clear()
+
+        for ch in text:
+            if ch == "\t":
+                flush()
+                r.append(OxmlElement("w:tab"))
+            elif ch in "\r\n":
+                flush()
+                r.append(OxmlElement("w:br"))
+            else:
+                buf.append(ch)
+        flush()
+
+        p._p.append(r)
+        return Run(r, p)
 
     doc = Document()
     doc.styles["Normal"].font.size = Pt(11)
@@ -669,13 +704,30 @@ def export_doc(data, output_path, *, show_header=True, show_meta=True,
     section = doc.sections[0]
     usable_w = int(section.page_width - section.left_margin - section.right_margin)
 
+    # 追加段落用 O(1) 写法：python-docx 的 add_paragraph() 每次都从 body 头部
+    # 线性查找末尾的 w:sectPr，段落一多就是 O(n²)（8000 楼时占掉大半耗时）。
+    # 这里直接拿到 sectPr，把新段落插到它前面，XML 顺序与原来完全一致。
+    _body_el = doc.element.body
+    _sectPr = _body_el.find(qn("w:sectPr"))
+    # Paragraph 的父对象必须是容器（BlockItemContainer），它才提供 .part；
+    # 传裸 XML 元素会让 run.add_picture() 拿不到 part 而失败。
+    _container = doc._body
+
+    def new_paragraph():
+        el = OxmlElement("w:p")
+        if _sectPr is not None:
+            _sectPr.addprevious(el)
+        else:
+            _body_el.append(el)
+        return Paragraph(el, _container)
+
     for reply in data:
         is_po = bool(reply.get("is_po"))
         is_admin = bool(reply.get("is_admin"))
 
         if show_header:
-            p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(2)
+            p = new_paragraph()
+            set_space_after(p, Pt(2))
 
             ts_stops = p.paragraph_format.tab_stops
             ts_stops.add_tab_stop(Emu(usable_w // 2), WD_TAB_ALIGNMENT.CENTER)
@@ -710,24 +762,24 @@ def export_doc(data, output_path, *, show_header=True, show_meta=True,
         if show_meta:
             title = reply.get("title", "")
             if _is_meaningful(title, "无标题"):
-                p = doc.add_paragraph()
-                p.paragraph_format.space_after = Pt(2)
+                p = new_paragraph()
+                set_space_after(p, Pt(2))
                 add_run(p, "标题：", color=COLOR_HEADER, size=11)
                 add_run(p, title, color=COLOR_TEXT, bold=True, size=11)
 
             name = reply.get("name", "")
             if _is_meaningful(name, "无名氏"):
-                p = doc.add_paragraph()
-                p.paragraph_format.space_after = Pt(2)
+                p = new_paragraph()
+                set_space_after(p, Pt(2))
                 add_run(p, "名称：", color=COLOR_HEADER, size=11)
                 add_run(p, name, color=COLOR_TEXT, bold=True, size=11)
 
         if reply.get("is_sage"):
-            p = doc.add_paragraph()
-            p.paragraph_format.space_after = Pt(2)
+            p = new_paragraph()
+            set_space_after(p, Pt(2))
             add_run(p, "本串已经被SAGE", color=COLOR_ADMIN, bold=True, size=11)
 
-        content_p = doc.add_paragraph()
+        content_p = new_paragraph()
         plain_content = html_to_plain_text(reply.get("content", ""))
         content_lines = plain_content.split("\n") if plain_content else [""]
 
@@ -742,22 +794,22 @@ def export_doc(data, output_path, *, show_header=True, show_meta=True,
             if idx < len(content_lines) - 1:
                 run.add_break()
 
-        content_p.paragraph_format.space_after = Pt(8)
+        set_space_after(content_p, Pt(8))
 
         ipath = _resolve_image_local_path(reply, image_opts)
         if ipath:
             try:
-                p = doc.add_paragraph()
-                p.paragraph_format.space_after = Pt(8)
+                p = new_paragraph()
+                set_space_after(p, Pt(8))
                 run = p.add_run()
                 run.add_picture(ipath, width=Cm(8))
             except Exception:
                 pass
 
         if show_divider:
-            sep = doc.add_paragraph()
+            sep = new_paragraph()
             add_bottom_border(sep)
-            sep.paragraph_format.space_after = Pt(8)
+            set_space_after(sep, Pt(8))
 
     doc.save(output_path)
 
